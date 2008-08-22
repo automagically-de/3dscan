@@ -15,6 +15,7 @@
 #include "ac3d.h"
 #include "config.h"
 
+static void resize_storage(G3DScanner *scanner);
 static GSList *init_regions(G3DScanner *scanner);
 static gboolean idle_func(gpointer data);
 static void graycode_region_changed(RegionType type, GdkRectangle *r,
@@ -29,6 +30,9 @@ int main(int argc, char *argv[])
 
 	scanner = g_new0(G3DScanner, 1);
 	scanner->config = config_init();
+	/* FIXME: init n_bits in config before GUI init */
+	scanner->n_bits = config_get_int(scanner->config, "base", "n_bits", 6);
+
 	scanner->regions = init_regions(scanner);
 	scanner->v4l2 = v4l2_init(scanner->config);
 	if(!scanner->v4l2) {
@@ -44,14 +48,10 @@ int main(int argc, char *argv[])
 
 	gui_set_quit_handler(scanner->gui, G_CALLBACK(main_quit), scanner);
 
-	scanner->n_bits = config_get_int(scanner->config, "base", "n_bits", 6);
 	scanner->n_vert_y = config_get_int(scanner->config, "base", "n_vert_y",
 		64);
-
+	resize_storage(scanner);
 	scanner->bits = g_new0(guint8, scanner->n_bits);
-	scanner->angle_scans = g_new0(guint8, (1 << scanner->n_bits));
-	scanner->angle_verts = g_new0(gfloat,
-		scanner->n_vert_y * (1 << scanner->n_bits));
 	gui_set_regions(scanner->gui, scanner->regions);
 
 	gui_show(scanner->gui);
@@ -72,6 +72,18 @@ int main(int argc, char *argv[])
 	g_free(scanner);
 
 	return EXIT_SUCCESS;
+}
+
+static void resize_storage(G3DScanner *scanner)
+{
+	if(scanner->angle_scans)
+		g_free(scanner->angle_scans);
+	scanner->angle_scans = g_new0(guint8, (1 << scanner->n_bits));
+
+	if(scanner->angle_verts)
+		g_free(scanner->angle_verts);
+	scanner->angle_verts = g_new0(gfloat,
+		scanner->n_vert_y * (1 << scanner->n_bits));
 }
 
 static GSList *init_regions(G3DScanner *scanner)
@@ -305,8 +317,10 @@ static gboolean idle_func(gpointer data)
 		g_free(s);
 		binarize_object_region(scanner, pixbuf);
 		gui_set_image(scanner->gui, pixbuf);
-		if(scanner->valid_dir && (scanner->angle_scans[gv] < 10))
+		if(scanner->valid_dir && (scanner->angle_scans[gv] < 10)) {
 			scan_angle(scanner, pixbuf, gv);
+			gui_set_scan_progress(scanner->gui, gv, scanner->angle_scans[gv]);
+		}
 		gdk_pixbuf_unref(pixbuf);
 	}
 
@@ -333,6 +347,8 @@ static void graycode_region_changed(RegionType type, GdkRectangle *r,
 	config_set_int(scanner->config, prefix, "y", r->y);
 	config_set_int(scanner->config, prefix, "width", r->width);
 	config_set_int(scanner->config, prefix, "height", r->height);
+
+	resize_storage(scanner);
 }
 
 static gboolean main_quit(gpointer window, GdkEvent *ev, G3DScanner *scanner)

@@ -6,17 +6,11 @@
 #include "region.h"
 #include "config.h"
 
-typedef struct {
-	Config *config;
-	GtkWindow *window;
-	GtkWidget *image;
-	GtkWidget *l_angle;
-	GSList *regions;
-	RegionType region_selector;
-} GuiData;
+typedef struct _GuiData GuiData;
 
 GuiData *gui_init(Config *config);
 void gui_show(GuiData *data);
+void gui_set_scan_progress(GuiData *data, guint32 angle, guint32 n_scans);
 void gui_set_quit_handler(GuiData *data, GCallback quit, gpointer user_data);
 void gui_set_regions(GuiData *data, GSList *regions);
 void gui_set_image(GuiData *data, GdkPixbuf *pixbuf);

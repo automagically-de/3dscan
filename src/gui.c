@@ -3,6 +3,16 @@
 #include "gui.h"
 #include "region.h"
 
+struct _GuiData {
+	Config *config;
+	GtkWindow *window;
+	GtkWidget *image;
+	GtkWidget *l_angle;
+	GtkWidget **angle_pbars;
+	GSList *regions;
+	RegionType region_selector;
+};
+
 static gboolean gui_image_btn_press_cb(GtkWidget *widget, GdkEventButton *eb,
 	gpointer user_data);
 static gboolean gui_image_btn_release_cb(GtkWidget *widget, GdkEventButton *eb,
@@ -13,9 +23,12 @@ static gboolean gui_region_toggled_cb(GtkToggleToolButton *toggle_tool_button,
 GuiData *gui_init(Config *config)
 {
 	GuiData *data;
-	GtkWidget *vbox, *hbox, *tbox, *tbar, *frame;
+	GtkWidget *vbox, *hbox, *abox, *tbox, *tbar, *frame, *label;
 	GtkToolItem *titem;
 	GSList *gselect = NULL;
+	gchar *s;
+	gint32 i;
+	guint32 n, h, w;
 
 	data = g_new0(GuiData, 1);
 	data->config = config;
@@ -27,6 +40,28 @@ GuiData *gui_init(Config *config)
 
 	hbox = gtk_hbox_new(FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, TRUE, TRUE, 0);
+
+	abox = gtk_hbox_new(FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(vbox), abox, FALSE, FALSE, 0);
+	n = (1 << config_get_int(config, "base", "n_bits", 0));
+	h = config_get_int(config, "gui", "angle_bar_height", 32);
+	w = config_get_int(config, "gui", "angle_bar_width", 8);
+	data->angle_pbars = g_new0(GtkWidget *, n);
+	for(i = 0; i < n; i ++) {
+		if((i % (n / 4)) == 0) {
+			s = g_strdup_printf(" %.2f°: ", (gdouble)i * 360 / n);
+			label = gtk_label_new(s);
+			g_free(s);
+			gtk_box_pack_start(GTK_BOX(abox), label, FALSE, TRUE, 0);
+		}
+		data->angle_pbars[i] = gtk_progress_bar_new();
+		gtk_progress_bar_set_orientation(
+			GTK_PROGRESS_BAR(data->angle_pbars[i]),
+			GTK_PROGRESS_BOTTOM_TO_TOP);
+		gtk_widget_set_size_request(data->angle_pbars[i], w, h);
+		gtk_box_pack_start(GTK_BOX(abox), data->angle_pbars[i],
+			FALSE, TRUE, 0);
+	}
 
 	data->image = gtk_drawing_area_new();
 	gtk_box_pack_start(GTK_BOX(hbox), data->image, TRUE, TRUE, 0);
@@ -71,6 +106,12 @@ GuiData *gui_init(Config *config)
 	gtk_toggle_tool_button_set_active(GTK_TOGGLE_TOOL_BUTTON(titem), TRUE);
 
 	return data;
+}
+
+void gui_set_scan_progress(GuiData *data, guint32 angle, guint32 n_scans)
+{
+	gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(data->angle_pbars[angle]),
+		(gfloat)n_scans / 10.0);
 }
 
 void gui_set_quit_handler(GuiData *data, GCallback quit, gpointer user_data)

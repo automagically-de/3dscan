@@ -32,6 +32,8 @@ gboolean config_save(Config *config)
 	dirname = g_path_get_dirname(path);
 	g_mkdir(dirname, 0755);
 	retval = g_file_set_contents(path, fdata, -1, NULL);
+	if(!retval)
+		g_warning("failed to save config");
 	g_free(dirname);
 	g_free(path);
 	return retval;
