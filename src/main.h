@@ -19,6 +19,7 @@ typedef struct {
 
 	guint8 *angle_scans;
 	gfloat *angle_verts;
+	guint8 *angle_colors;
 } G3DScanner;
 
 #endif

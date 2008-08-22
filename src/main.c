@@ -85,6 +85,11 @@ static void resize_storage(G3DScanner *scanner)
 		g_free(scanner->angle_verts);
 	scanner->angle_verts = g_new0(gfloat,
 		scanner->n_vert_y * (1 << scanner->n_bits));
+
+	if(scanner->angle_colors)
+		g_free(scanner->angle_colors);
+	scanner->angle_colors = g_new0(guint8,
+		scanner->n_vert_y * (1 << scanner->n_bits) * 3);
 }
 
 static GSList *init_regions(G3DScanner *scanner)
@@ -141,6 +146,11 @@ static gboolean idle_func(gpointer data)
 				scanner->bits[0], scanner->bits[1], scanner->bits[2],
 				scanner->bits[3], scanner->bits[4], scanner->bits[5],
 				gv, deg);
+			if(scanner->angle_scans[gv] == 0) {
+				/* scan colors of vertices a quarter rotation later */
+				scan_colors(scanner, pixbuf, (gv +
+					(1 << scanner->n_bits) * 3 / 4) % (1 << scanner->n_bits));
+			}
 		} else {
 			s = g_strdup("invalid");
 		}
@@ -189,7 +199,8 @@ static gboolean main_quit(gpointer window, GdkEvent *ev, G3DScanner *scanner)
 	g_debug("quitting...");
 	region = g_slist_nth_data(scanner->regions, REGION_OBJECT);
 	if(region != NULL)
-		ac3d_write("test.ac", scanner->angle_verts, (1 << scanner->n_bits),
+		ac3d_write("test.ac", scanner->angle_verts, scanner->angle_colors,
+			(1 << scanner->n_bits),
 			scanner->n_vert_y, region->rect.height);
 	g_idle_remove_by_data(scanner);
 	gtk_main_quit();

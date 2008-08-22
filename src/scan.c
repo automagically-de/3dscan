@@ -141,6 +141,30 @@ gboolean scan_binarize_object_region(G3DScanner *scanner, GdkPixbuf *pixbuf)
 	return TRUE;
 }
 
+gboolean scan_colors(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
+{
+	Region *region;
+	guint8 col[3];
+	guint32 x, y;
+	gint32 i;
+	gfloat sh;
+
+	region = g_slist_nth_data(scanner->regions, REGION_OBJECT);
+	g_return_val_if_fail(region != NULL, FALSE);
+	g_return_val_if_fail(angle < (1 << scanner->n_bits), FALSE);
+
+	sh = (gfloat)region->rect.height / scanner->n_vert_y;
+	x = region->rect.x + region->rect.width / 2;
+	for(i = 0; i < scanner->n_vert_y; i ++) {
+		y = (region->rect.y + region->rect.height - 1) - i * sh - sh / 2;
+		avg_pixel_9(pixbuf, x, y, col);
+		memcpy(scanner->angle_colors + (angle * scanner->n_vert_y + i) * 3,
+			col, 3);
+	}
+
+	return TRUE;
+}
+
 gboolean scan_angle(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
 {
 	Region *region;
