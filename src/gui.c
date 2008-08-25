@@ -5,11 +5,11 @@
 
 struct _GuiData {
 	Config *config;
+	Model *model;
 	GtkWindow *window;
 	GtkWidget *image;
 	GtkWidget *l_angle;
 	GtkWidget **angle_pbars;
-	GSList *regions;
 	RegionType region_selector;
 };
 
@@ -20,48 +20,31 @@ static gboolean gui_image_btn_release_cb(GtkWidget *widget, GdkEventButton *eb,
 static gboolean gui_region_toggled_cb(GtkToggleToolButton *toggle_tool_button,
 	gpointer user_data);
 
-GuiData *gui_init(Config *config)
+static gboolean gui_btn_new_cb(GtkToolButton *toolbutton, gpointer user_data);
+static gboolean gui_btn_save_cb(GtkToolButton *toolbutton, gpointer user_data);
+
+static void gui_create_toolbar(GuiData *gui, GtkBox *box);
+static void gui_create_angle_view(GuiData *gui, GtkBox *box);
+
+GuiData *gui_init(Config *config, Model *model)
 {
 	GuiData *data;
-	GtkWidget *vbox, *hbox, *abox, *tbox, *tbar, *frame, *label;
-	GtkToolItem *titem;
-	GSList *gselect = NULL;
-	gchar *s;
-	gint32 i;
-	guint32 n, h, w;
+	GtkWidget *vbox, *hbox;
 
 	data = g_new0(GuiData, 1);
 	data->config = config;
+	data->model = model;
+	data->region_selector = REGION_OBJECT;
 
 	data->window = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
 
 	vbox = gtk_vbox_new(FALSE, 0);
 	gtk_container_add(GTK_CONTAINER(data->window), vbox);
 
+	gui_create_toolbar(data, GTK_BOX(vbox));
+
 	hbox = gtk_hbox_new(FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, TRUE, TRUE, 0);
-
-	abox = gtk_hbox_new(FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(vbox), abox, FALSE, FALSE, 0);
-	n = (1 << config_get_int(config, "base", "n_bits", 0));
-	h = config_get_int(config, "gui", "angle_bar_height", 32);
-	w = config_get_int(config, "gui", "angle_bar_width", 8);
-	data->angle_pbars = g_new0(GtkWidget *, n);
-	for(i = 0; i < n; i ++) {
-		if((i % (n / 4)) == 0) {
-			s = g_strdup_printf(" %.2f°: ", (gdouble)i * 360 / n);
-			label = gtk_label_new(s);
-			g_free(s);
-			gtk_box_pack_start(GTK_BOX(abox), label, FALSE, TRUE, 0);
-		}
-		data->angle_pbars[i] = gtk_progress_bar_new();
-		gtk_progress_bar_set_orientation(
-			GTK_PROGRESS_BAR(data->angle_pbars[i]),
-			GTK_PROGRESS_BOTTOM_TO_TOP);
-		gtk_widget_set_size_request(data->angle_pbars[i], w, h);
-		gtk_box_pack_start(GTK_BOX(abox), data->angle_pbars[i],
-			FALSE, TRUE, 0);
-	}
 
 	data->image = gtk_drawing_area_new();
 	gtk_box_pack_start(GTK_BOX(hbox), data->image, TRUE, TRUE, 0);
@@ -71,42 +54,90 @@ GuiData *gui_init(Config *config)
 		G_CALLBACK(gui_image_btn_release_cb), data);
 	gtk_widget_add_events(data->image,
 		GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+	gui_create_angle_view(data, GTK_BOX(vbox));
 
-	tbox = gtk_vbox_new(FALSE, 0);
-	gtk_box_pack_start(GTK_BOX(hbox), tbox, FALSE, TRUE, 5);
+	return data;
+}
 
-	frame = gtk_frame_new("angle");
-	gtk_box_pack_start(GTK_BOX(tbox), frame, FALSE, TRUE, 0);
+/*****************************************************************************/
 
-	data->l_angle = gtk_label_new("");
-	gtk_container_add(GTK_CONTAINER(frame), data->l_angle);
-
-	frame = gtk_frame_new("select region");
-	gtk_box_pack_start(GTK_BOX(tbox), frame, FALSE, TRUE, 0);
+static void gui_create_toolbar(GuiData *gui, GtkBox *box)
+{
+	GtkWidget *tbar;
+	GtkToolItem *titem;
+	GSList *gselect = NULL;
 
 	tbar = gtk_toolbar_new();
 	gtk_toolbar_set_style(GTK_TOOLBAR(tbar), GTK_TOOLBAR_ICONS);
-	gtk_container_add(GTK_CONTAINER(frame), tbar);
+	gtk_toolbar_set_tooltips(GTK_TOOLBAR(tbar), TRUE);
+	gtk_box_pack_start(box, tbar, FALSE, TRUE, 0);
+
+	titem = gtk_tool_button_new_from_stock("gtk-new");
+	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
+	g_signal_connect(G_OBJECT(titem), "clicked",
+		G_CALLBACK(gui_btn_new_cb), gui);
+
+	titem = gtk_tool_button_new_from_stock("gtk-save");
+	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
+	g_signal_connect(G_OBJECT(titem), "clicked",
+		G_CALLBACK(gui_btn_save_cb), gui);
+
+	titem = gtk_separator_tool_item_new();
+	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
 
 	titem = gtk_radio_tool_button_new_from_stock(gselect, "gtk-dialog-info");
+	gtk_tool_item_set_tooltip_text(titem, "select object region");
 	gselect = gtk_radio_tool_button_get_group(GTK_RADIO_TOOL_BUTTON(titem));
 	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
 	g_object_set_data(G_OBJECT(titem), "region-id",
 		GINT_TO_POINTER(REGION_OBJECT));
 	g_signal_connect(G_OBJECT(titem), "toggled",
-		G_CALLBACK(gui_region_toggled_cb), data);
+		G_CALLBACK(gui_region_toggled_cb), gui);
+	gtk_toggle_tool_button_set_active(GTK_TOGGLE_TOOL_BUTTON(titem), TRUE);
 
 	titem = gtk_radio_tool_button_new_from_stock(gselect, "gtk-justify-fill");
+	gtk_tool_item_set_tooltip_text(titem, "select graycode region");
 	gselect = gtk_radio_tool_button_get_group(GTK_RADIO_TOOL_BUTTON(titem));
 	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
 	g_object_set_data(G_OBJECT(titem), "region-id",
 		GINT_TO_POINTER(REGION_GRAYCODE));
 	g_signal_connect(G_OBJECT(titem), "toggled",
-		G_CALLBACK(gui_region_toggled_cb), data);
-	gtk_toggle_tool_button_set_active(GTK_TOGGLE_TOOL_BUTTON(titem), TRUE);
-
-	return data;
+		G_CALLBACK(gui_region_toggled_cb), gui);
 }
+
+static void gui_create_angle_view(GuiData *gui, GtkBox *box)
+{
+	GtkWidget *abox, *label;
+	gchar *s;
+	gint32 i;
+	guint32 n, h, w;
+
+	abox = gtk_hbox_new(FALSE, 0);
+	gtk_box_pack_start(box, abox, FALSE, FALSE, 0);
+	n = (1 << config_get_int(gui->config, "base", "n_bits", 0));
+	h = config_get_int(gui->config, "gui", "angle_bar_height", 32);
+	w = config_get_int(gui->config, "gui", "angle_bar_width", 8);
+	gui->angle_pbars = g_new0(GtkWidget *, n);
+	for(i = 0; i < n; i ++) {
+		if((i % (n / 4)) == 0) {
+			s = g_strdup_printf(" %.2f°: ", (gdouble)i * 360 / n);
+			label = gtk_label_new(s);
+			g_free(s);
+			gtk_box_pack_start(GTK_BOX(abox), label, FALSE, TRUE, 0);
+		}
+		gui->angle_pbars[i] = gtk_progress_bar_new();
+		gtk_progress_bar_set_orientation(
+			GTK_PROGRESS_BAR(gui->angle_pbars[i]),
+			GTK_PROGRESS_BOTTOM_TO_TOP);
+		gtk_widget_set_size_request(gui->angle_pbars[i], w, h);
+		gtk_box_pack_start(GTK_BOX(abox), gui->angle_pbars[i],
+			FALSE, TRUE, 0);
+	}
+	gui->l_angle = gtk_label_new("");
+	gtk_box_pack_end(GTK_BOX(abox), gui->l_angle, FALSE, FALSE, 5);
+}
+
+/*****************************************************************************/
 
 void gui_set_scan_progress(GuiData *data, guint32 angle, guint32 n_scans)
 {
@@ -117,11 +148,6 @@ void gui_set_scan_progress(GuiData *data, guint32 angle, guint32 n_scans)
 void gui_set_quit_handler(GuiData *data, GCallback quit, gpointer user_data)
 {
 	g_signal_connect(G_OBJECT(data->window), "delete-event", quit, user_data);
-}
-
-void gui_set_regions(GuiData *data, GSList *regions)
-{
-	data->regions = regions;
 }
 
 void gui_set_image(GuiData *data, GdkPixbuf *pixbuf)
@@ -140,7 +166,7 @@ void gui_set_image(GuiData *data, GdkPixbuf *pixbuf)
 		data->image->style->fg_gc[GTK_WIDGET_STATE(data->image)],
 		pixbuf, 0, 0, 0, 0, w, h, GDK_RGB_DITHER_NONE, 0, 0);
 
-	region = g_slist_nth_data(data->regions, REGION_GRAYCODE);
+	region = g_slist_nth_data(data->model->regions, REGION_GRAYCODE);
 	if((region != NULL) &&
 		(region->rect.width > 0) &&
 		(region->rect.height > nb * 3)) {
@@ -154,7 +180,7 @@ void gui_set_image(GuiData *data, GdkPixbuf *pixbuf)
 		}
 	}
 
-	region = g_slist_nth_data(data->regions, REGION_OBJECT);
+	region = g_slist_nth_data(data->model->regions, REGION_OBJECT);
 	if((region != NULL) &&
 		(region->rect.width > 0) && (region->rect.height > 0)) {
 		gdk_draw_rectangle(data->image->window,
@@ -175,6 +201,12 @@ void gui_show(GuiData *data)
 	gtk_widget_show_all(GTK_WIDGET(data->window));
 }
 
+void gui_update(GuiData *data)
+{
+	while(gtk_events_pending())
+		gtk_main_iteration();
+}
+
 void gui_cleanup(GuiData *data)
 {
 	g_free(data);
@@ -190,7 +222,7 @@ static gboolean gui_image_btn_press_cb(GtkWidget *widget, GdkEventButton *eb,
 
 	g_return_val_if_fail(data != NULL, FALSE);
 
-	region = g_slist_nth_data(data->regions, data->region_selector);
+	region = g_slist_nth_data(data->model->regions, data->region_selector);
 	if(region == NULL)
 		return FALSE;
 
@@ -213,7 +245,7 @@ static gboolean gui_image_btn_release_cb(GtkWidget *widget, GdkEventButton *eb,
 
 	g_return_val_if_fail(data != NULL, FALSE);
 
-	region = g_slist_nth_data(data->regions, data->region_selector);
+	region = g_slist_nth_data(data->model->regions, data->region_selector);
 	if(region == NULL)
 		return FALSE;
 
@@ -233,9 +265,8 @@ static gboolean gui_image_btn_release_cb(GtkWidget *widget, GdkEventButton *eb,
 		region->rect.height = eb->y - y;
 	}
 
-	if(region->changed_cb)
-		region->changed_cb(data->region_selector, &(region->rect),
-			region->changed_data);
+	model_rebuild_storage(data->model);
+
 	return TRUE;
 }
 
@@ -253,5 +284,23 @@ static gboolean gui_region_toggled_cb(GtkToggleToolButton *toggle_tool_button,
 		data->region_selector = type;
 	}
 
+	return TRUE;
+}
+
+static gboolean gui_btn_new_cb(GtkToolButton *toolbutton, gpointer user_data)
+{
+	GuiData *gui = user_data;
+
+	g_return_val_if_fail(gui != NULL, FALSE);
+	model_rebuild_storage(gui->model);
+	return TRUE;
+}
+
+static gboolean gui_btn_save_cb(GtkToolButton *toolbutton, gpointer user_data)
+{
+	GuiData *gui = user_data;
+
+	g_return_val_if_fail(gui != NULL, FALSE);
+	model_save(gui->model, "test.ac");
 	return TRUE;
 }

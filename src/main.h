@@ -4,22 +4,13 @@
 #include "v4l2.h"
 #include "gui.h"
 #include "config.h"
+#include "model.h"
 
 typedef struct {
 	V4l2Data *v4l2;
 	GuiData *gui;
 	Config *config;
-
-	GSList *regions;
-	gboolean valid_dir;
-
-	guint32 n_vert_y;
-	guint32 n_bits;
-	guint8 *bits;
-
-	guint8 *angle_scans;
-	gfloat *angle_verts;
-	guint8 *angle_colors;
+	Model *model;
 } G3DScanner;
 
 #endif

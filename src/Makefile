@@ -1,10 +1,10 @@
 MODS = gtk+-2.0 libg3d
 INCS = `pkg-config ${MODS} --cflags`
 LIBS = `pkg-config ${MODS} --libs` -lm
-OBJS = main.o gui.o v4l2.o gray.o ac3d.o config.o scan.o
+OBJS = main.o gui.o v4l2.o gray.o ac3d.o config.o scan.o model.o
 BIN = 3dscan
 #CC = gcc
-CFLAGS = -Wall -ansi -pedantic ${INCS}
+CFLAGS = -Wall -ansi -pedantic -ggdb ${INCS}
 
 all: ${BIN}
 

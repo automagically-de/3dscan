@@ -47,41 +47,41 @@ static inline void avg_pixel_9(GdkPixbuf *pixbuf, guint32 x, guint32 y,
 	newpixel[2] = sum_b / n_pix;
 }
 
-gboolean scan_update_bits(G3DScanner *scanner, GdkPixbuf *pixbuf)
+gboolean scan_update_bits(Model *model, GdkPixbuf *pixbuf)
 {
 	guint32 sum, cx, cy;
 	gint32 i;
 	Region *region;
 	gfloat sh;
 
-	scanner->valid_dir = FALSE;
+	model->valid_dir = FALSE;
 
-	region = g_slist_nth_data(scanner->regions, REGION_GRAYCODE);
+	region = g_slist_nth_data(model->regions, REGION_GRAYCODE);
 	if(region == NULL)
 		return FALSE;
-	if((region->rect.width < 1) || (region->rect.height < scanner->n_bits * 3))
+	if((region->rect.width < 1) || (region->rect.height < model->n_bits * 3))
 		return FALSE;
 
-	sh = (gfloat)region->rect.height / scanner->n_bits;
+	sh = (gfloat)region->rect.height / model->n_bits;
 	cx = region->rect.x + region->rect.width / 2;
 
-	for(i = 0; i < scanner->n_bits; i ++) {
+	for(i = 0; i < model->n_bits; i ++) {
 		cy = region->rect.y + i * sh + sh / 2;
 		sum = black_pixel(get_pixel(pixbuf, cx, cy));
 		sum += black_pixel(get_pixel(pixbuf, cx + 1, cy));
 		sum += black_pixel(get_pixel(pixbuf, cx - 1, cy));
 		sum += black_pixel(get_pixel(pixbuf, cx, cy + 1));
 		sum += black_pixel(get_pixel(pixbuf, cx, cy - 1));
-		scanner->bits[scanner->n_bits - i - 1] = (sum > 2) ? 1 : 0;
+		model->bits[model->n_bits - i - 1] = (sum > 2) ? 1 : 0;
 	}
 
-	scanner->valid_dir = TRUE;
+	model->valid_dir = TRUE;
 	return TRUE;
 }
 
-gboolean scan_binarize_object_region(G3DScanner *scanner, GdkPixbuf *pixbuf)
+gboolean scan_binarize_object_region(Model *model, GdkPixbuf *pixbuf)
 {
-	Region *region = g_slist_nth_data(scanner->regions, REGION_OBJECT);
+	Region *region = g_slist_nth_data(model->regions, REGION_OBJECT);
 	guint8 *new, *pixels, *pix, bg_gv, gv;
 	gint32 x, y, i;
 	guint32 nc, rs, sum_r = 0, sum_g = 0, sum_b = 0, n_pix = 0, w;
@@ -141,7 +141,7 @@ gboolean scan_binarize_object_region(G3DScanner *scanner, GdkPixbuf *pixbuf)
 	return TRUE;
 }
 
-gboolean scan_colors(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
+gboolean scan_colors(Model *model, GdkPixbuf *pixbuf, guint32 angle)
 {
 	Region *region;
 	guint8 col[3];
@@ -149,23 +149,23 @@ gboolean scan_colors(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
 	gint32 i;
 	gfloat sh;
 
-	region = g_slist_nth_data(scanner->regions, REGION_OBJECT);
+	region = g_slist_nth_data(model->regions, REGION_OBJECT);
 	g_return_val_if_fail(region != NULL, FALSE);
-	g_return_val_if_fail(angle < (1 << scanner->n_bits), FALSE);
+	g_return_val_if_fail(angle < (1 << model->n_bits), FALSE);
 
-	sh = (gfloat)region->rect.height / scanner->n_vert_y;
+	sh = (gfloat)region->rect.height / model->n_vert_y;
 	x = region->rect.x + region->rect.width / 2;
-	for(i = 0; i < scanner->n_vert_y; i ++) {
+	for(i = 0; i < model->n_vert_y; i ++) {
 		y = (region->rect.y + region->rect.height - 1) - i * sh - sh / 2;
 		avg_pixel_9(pixbuf, x, y, col);
-		memcpy(scanner->angle_colors + (angle * scanner->n_vert_y + i) * 3,
+		memcpy(model->angle_colors + (angle * model->n_vert_y + i) * 3,
 			col, 3);
 	}
 
 	return TRUE;
 }
 
-gboolean scan_angle(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
+gboolean scan_angle(Model *model, GdkPixbuf *pixbuf, guint32 angle)
 {
 	Region *region;
 	gint32 i, x;
@@ -173,14 +173,14 @@ gboolean scan_angle(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
 	guint32 y;
 	gfloat *v, sh;
 
-	region = g_slist_nth_data(scanner->regions, REGION_OBJECT);
+	region = g_slist_nth_data(model->regions, REGION_OBJECT);
 	g_return_val_if_fail(region != NULL, FALSE);
-	g_return_val_if_fail(angle < (1 << scanner->n_bits), FALSE);
+	g_return_val_if_fail(angle < (1 << model->n_bits), FALSE);
 
-	sh = (gfloat)region->rect.height / scanner->n_vert_y;
-	for(i = 0; i < scanner->n_vert_y; i ++) {
+	sh = (gfloat)region->rect.height / model->n_vert_y;
+	for(i = 0; i < model->n_vert_y; i ++) {
 		y = (region->rect.y + region->rect.height - 1) - i * sh - sh / 2;
-		v = scanner->angle_verts + angle * scanner->n_vert_y + i;
+		v = model->angle_verts + angle * model->n_vert_y + i;
 		for(x = 0; x < (region->rect.width * 0.75); x ++) {
 			pix = get_pixel(pixbuf, x + region->rect.x, y);
 			if(pix[0] == 0x00) {
@@ -191,10 +191,10 @@ gboolean scan_angle(G3DScanner *scanner, GdkPixbuf *pixbuf, guint32 angle)
 		}
 #if 0
 		g_debug("0x%02X: %02d: %.2f", angle, i,
-			scanner->angle_verts[angle * scanner->n_vert_y + i]);
+			model->angle_verts[angle * model->n_vert_y + i]);
 #endif
 	}
-	scanner->angle_scans[angle] ++;
+	model->angle_scans[angle] ++;
 	return TRUE;
 }
 
