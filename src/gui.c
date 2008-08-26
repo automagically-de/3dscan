@@ -22,6 +22,7 @@ static gboolean gui_region_toggled_cb(GtkToggleToolButton *toggle_tool_button,
 
 static gboolean gui_btn_new_cb(GtkToolButton *toolbutton, gpointer user_data);
 static gboolean gui_btn_save_cb(GtkToolButton *toolbutton, gpointer user_data);
+static gboolean gui_btn_view_cb(GtkToolButton *toolbutton, gpointer user_data);
 
 static void gui_create_toolbar(GuiData *gui, GtkBox *box);
 static void gui_create_angle_view(GuiData *gui, GtkBox *box);
@@ -85,6 +86,15 @@ static void gui_create_toolbar(GuiData *gui, GtkBox *box)
 	titem = gtk_separator_tool_item_new();
 	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
 
+	titem = gtk_tool_button_new_from_stock("gtk-zoom-fit");
+	gtk_tool_item_set_tooltip_text(titem, "preview model");
+	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
+	g_signal_connect(G_OBJECT(titem), "clicked",
+		G_CALLBACK(gui_btn_view_cb), gui);
+
+	titem = gtk_separator_tool_item_new();
+	gtk_toolbar_insert(GTK_TOOLBAR(tbar), titem, -1);
+
 	titem = gtk_radio_tool_button_new_from_stock(gselect, "gtk-dialog-info");
 	gtk_tool_item_set_tooltip_text(titem, "select object region");
 	gselect = gtk_radio_tool_button_get_group(GTK_RADIO_TOOL_BUTTON(titem));
@@ -135,6 +145,15 @@ static void gui_create_angle_view(GuiData *gui, GtkBox *box)
 	}
 	gui->l_angle = gtk_label_new("");
 	gtk_box_pack_end(GTK_BOX(abox), gui->l_angle, FALSE, FALSE, 5);
+}
+
+static void gui_clear_scan_progress(GuiData *gui)
+{
+	gint32 i;
+
+	for(i = 0; i < (1 << gui->model->n_bits); i ++)
+		gtk_progress_bar_set_fraction(
+			GTK_PROGRESS_BAR(gui->angle_pbars[i]), 0.0);
 }
 
 /*****************************************************************************/
@@ -266,6 +285,7 @@ static gboolean gui_image_btn_release_cb(GtkWidget *widget, GdkEventButton *eb,
 	}
 
 	model_rebuild_storage(data->model);
+	gui_clear_scan_progress(data);
 
 	return TRUE;
 }
@@ -293,14 +313,60 @@ static gboolean gui_btn_new_cb(GtkToolButton *toolbutton, gpointer user_data)
 
 	g_return_val_if_fail(gui != NULL, FALSE);
 	model_rebuild_storage(gui->model);
+	gui_clear_scan_progress(gui);
 	return TRUE;
 }
 
 static gboolean gui_btn_save_cb(GtkToolButton *toolbutton, gpointer user_data)
 {
 	GuiData *gui = user_data;
+	GtkWidget *dialog;
+	gint result;
+	gboolean retval;
+	gchar *filename;
 
 	g_return_val_if_fail(gui != NULL, FALSE);
-	model_save(gui->model, "test.ac");
+
+	dialog = gtk_file_chooser_dialog_new("Save model...", NULL,
+		GTK_FILE_CHOOSER_ACTION_SAVE,
+		GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
+		GTK_STOCK_SAVE, GTK_RESPONSE_ACCEPT,
+		NULL);
+	result = gtk_dialog_run(GTK_DIALOG(dialog));
+	if(result == GTK_RESPONSE_ACCEPT) {
+		filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+		retval = model_save(gui->model, filename);
+		g_free(filename);
+	}
+	gtk_widget_destroy(dialog);
+	return TRUE;
+}
+
+static gboolean gui_btn_view_cb(GtkToolButton *toolbutton, gpointer user_data)
+{
+	GuiData *gui = user_data;
+	gchar *argv[3] = { NULL, NULL, NULL };
+	GError *error = NULL;
+	GPid pid = 0;
+
+	g_return_val_if_fail(gui != NULL, FALSE);
+	argv[0] = config_get_string(gui->config, "base", "preview_program",
+		"g3dviewer");
+	argv[1] = g_strdup_printf("%s%c3dscan_preview.%d.ac", g_get_tmp_dir(),
+		G_DIR_SEPARATOR, g_random_int());
+	if(model_save(gui->model, argv[1])) {
+		g_spawn_async(g_get_tmp_dir(), /* working directory */
+			argv, NULL, /* argv, envp */
+			G_SPAWN_SEARCH_PATH, /* flags */
+			NULL, NULL, /* child_setup, user_data */
+			&pid, &error);
+		if(error != NULL) {
+			g_debug("failed to spawn '%s' '%s': %s",
+				argv[0], argv[1], error->message);
+			g_error_free(error);
+		}
+	}
+	g_free(argv[0]);
+	g_free(argv[1]);
 	return TRUE;
 }
